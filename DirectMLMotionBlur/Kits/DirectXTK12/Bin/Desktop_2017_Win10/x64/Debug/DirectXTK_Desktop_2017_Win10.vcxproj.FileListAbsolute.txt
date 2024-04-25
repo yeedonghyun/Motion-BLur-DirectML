@@ -1,0 +1,3 @@
+C:\Users\cglab\Desktop\DirectML-master\Samples\DirectMLSuperResolution\Kits\DirectXTK12\Bin\Desktop_2017_Win10\x64\Debug\DirectXTK12.lib
+C:\Users\cglab\Desktop\DirectMLSuperResolution\Kits\DirectXTK12\Bin\Desktop_2017_Win10\x64\Debug\DirectXTK12.lib
+C:\Users\cglab\Desktop\DirectML-master\DirectMLSuperResolution\Kits\DirectXTK12\Bin\Desktop_2017_Win10\x64\Debug\DirectXTK12.lib
