@@ -31,3 +31,6 @@
 *.out
 *.app
 /DirectMLMotionBlur/packages
+/DirectMLMotionBlur/.vs
+/DirectMLMotionBlur/DirectMLSuperResolution
+/DirectMLMotionBlur/Kits/DirectXTK12/Bin/Desktop_2017_Win10/x64

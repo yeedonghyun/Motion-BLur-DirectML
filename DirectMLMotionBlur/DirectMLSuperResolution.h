@@ -12,6 +12,8 @@
 #include "StepTimer.h"
 #include "LoadWeights.h"
 #include "MediaEnginePlayer.h"
+#include "tiny_gltf.h"
+#include <Model.h>
 
 // Force the default NCHW (batch/channels/height/width) tensor format, instead of determining
 // this based on the GPU vendor. Setting this may help run on older Nvidia hardware.
@@ -110,6 +112,7 @@ private:
     void CreateDirectMLResources();
     void InitializeDirectMLResources();
     void CreateUIResources();
+    void CreateMotionBlurResources();
 
     void GetStrides(
         _In_reads_(4) const uint32_t* sizes,
@@ -148,6 +151,8 @@ private:
         DML_BINDING_PROPERTIES& bindingProps,
         _In_reads_(1) IDMLBindingTable* initBindingTable,
         _Out_writes_opt_(1) ID3D12Resource** tempResource);
+
+    void RenderSceneByLayer();
 
     // DirectML method for setting up Tensors and creating operators
 #if !(USE_DMLX)
@@ -270,7 +275,7 @@ private:
     Microsoft::WRL::ComPtr<IDMLBindingTable>        m_dmlAddResidualBinding;
     Microsoft::WRL::ComPtr<IDMLOperatorInitializer> m_dmlOpInitializers[e_opCount];
 #endif
-
+        
     // DirectMLX operations
     Microsoft::WRL::ComPtr<IDMLCompiledOperator>    m_dmlGraph;
     Microsoft::WRL::ComPtr<IDMLBindingTable>        m_dmlBindingTable;
@@ -283,10 +288,28 @@ private:
     float                                           m_zoomY;
     float                                           m_zoomWindowSize;
     bool                                            m_zoomUpdated;
+    bool                                            m_motionBlur;
 
     const float                                     c_minZoom = 0.005f;
     const float                                     c_maxZoom = 0.05f;
-        
+
+    // MotionBlur Resources
+
+    using VertexType = DirectX::VertexPositionColor;
+
+    std::unique_ptr<DirectX::BasicEffect> m_effect;
+    std::unique_ptr<DirectX::PrimitiveBatch<VertexType>> m_batch;
+
+    DirectX::SimpleMath::Matrix m_world;
+    DirectX::SimpleMath::Matrix m_view;
+    DirectX::SimpleMath::Matrix m_proj;
+
+    std::unique_ptr<DirectX::CommonStates> m_states;
+    std::unique_ptr<DirectX::EffectFactory> m_fxFactory;
+    std::unique_ptr<DirectX::EffectTextureFactory> m_modelResources;
+    std::unique_ptr<DirectX::Model> m_model;
+    std::vector<std::shared_ptr<DirectX::IEffect>> m_modelNormal;
+
     // DirectX index enums
     enum SrvDescriptors : uint32_t
     {

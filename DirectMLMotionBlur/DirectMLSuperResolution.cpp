@@ -18,13 +18,14 @@
 
 const wchar_t* c_videoPath = L"FH3_540p60.mp4";
 const wchar_t* c_imagePath = L"Assets\\FH3_1_540p.png";
+const wchar_t* c_gltfPath = L"Assets\\BrainStem.glb";
 
 const float c_pipSize = 0.45f;   // Relative size of the picture-in-picture window
 
 extern void ExitSample();
 
 using namespace DirectX;
- 
+
 using Microsoft::WRL::ComPtr;
 
 #pragma warning(disable : 4238)
@@ -107,6 +108,7 @@ Sample::Sample()
     , m_zoomX(0.5f)
     , m_zoomY(0.5f)
     , m_zoomUpdated(false)
+    , m_motionBlur(true)
 {
     // Use gamma-correct rendering.
     // Renders only 2D, so no need for a depth buffer.
@@ -148,7 +150,11 @@ void Sample::Tick()
         Update(m_timer);
     });
 
-    Render();
+    if (m_motionBlur) {
+        RenderSceneByLayer();
+    }
+    else
+        Render();
 }
 
 // Updates the world.
@@ -232,6 +238,11 @@ void Sample::Update(DX::StepTimer const& timer)
         m_showPip = !m_showPip;
     }
 
+    if (m_keyboardButtons.IsKeyPressed(Keyboard::M))
+    {
+        m_motionBlur = !m_motionBlur;
+    }
+
     if (m_keyboardButtons.IsKeyPressed(Keyboard::Enter) && m_player.get() != nullptr)
     {
         if (m_player->IsPlaying())
@@ -252,11 +263,51 @@ void Sample::Update(DX::StepTimer const& timer)
         m_zoomUpdated = true;
     }
 
+
+    ///////////////
+
+    auto time = static_cast<float>(timer.GetTotalSeconds());
+
+    m_world = DirectX::SimpleMath::Matrix::CreateRotationZ(cosf(time) * 2.f);
+
     PIXEndEvent();
 }
 #pragma endregion
 
-#pragma region Frame Render
+#pragma region MotionBlur
+void Sample::RenderSceneByLayer()
+{
+
+    if (m_timer.GetFrameCount() == 0)
+    {
+        return;
+    }
+
+    // Prepare the command list to render a new frame.
+    m_deviceResources->Prepare();
+
+    auto commandList = m_deviceResources->GetCommandList();
+    
+    Clear();
+
+    // TODO: Add your rendering code here.
+    m_effect->Apply(commandList);
+    m_batch->Begin(commandList);
+
+    ID3D12DescriptorHeap* heaps[] = { m_modelResources->Heap(), m_states->Heap() };
+    commandList->SetDescriptorHeaps(static_cast<UINT>(std::size(heaps)), heaps);
+
+    Model::UpdateEffectMatrices(m_modelNormal, m_world, m_view, m_proj);
+
+    m_model->Draw(commandList, m_modelNormal.cbegin());
+
+    // Show the new frame.
+    m_deviceResources->Present();
+    m_graphicsMemory->Commit(m_deviceResources->GetCommandQueue());
+}
+#pragma endregion
+
+#pragma region SuperResolution
 // Draws the scene.
 void Sample::Render()
 {
@@ -699,6 +750,7 @@ void Sample::CreateDeviceDependentResources()
             e_fontDescCount);
     }
 
+    CreateMotionBlurResources();
     CreateTextureResources();
     CreateDirectMLResources();
     InitializeDirectMLResources();
@@ -1241,6 +1293,44 @@ void Sample::CreateUIResources()
     finish.wait();
 }
 
+void Sample::CreateMotionBlurResources()
+{
+    auto device = m_deviceResources->GetD3DDevice();
+
+    m_batch = std::make_unique<PrimitiveBatch<VertexType>>(device);
+
+    m_states = std::make_unique<CommonStates>(device);
+    auto m_fx = std::make_unique<EffectFactory>(device);
+    m_model = Model::CreateFromSDKMESH(L"cup.sdkmesh", device);
+
+    ResourceUploadBatch resourceUpload(device);
+
+    resourceUpload.Begin();
+
+    m_modelResources = m_model->LoadTextures(device, resourceUpload);
+
+    m_fxFactory = std::make_unique<EffectFactory>(m_modelResources->Heap(), m_states->Heap());
+
+    auto uploadResourcesFinished = resourceUpload.End(
+        m_deviceResources->GetCommandQueue());
+
+    uploadResourcesFinished.wait();
+
+    RenderTargetState rtState(m_deviceResources->GetBackBufferFormat(),
+        m_deviceResources->GetDepthBufferFormat());
+
+    EffectPipelineStateDescription pd(
+        nullptr,
+        CommonStates::Opaque,
+        CommonStates::DepthDefault,
+        CommonStates::CullClockwise,
+        rtState);
+
+    m_modelNormal = m_model->CreateEffects(*m_fxFactory, pd, pd);
+
+    m_world = DirectX::SimpleMath::Matrix::Identity;
+}
+
 // Allocate all memory resources that change on a window SizeChanged event.
 void Sample::CreateWindowSizeDependentResources()
 {
@@ -1251,6 +1341,14 @@ void Sample::CreateWindowSizeDependentResources()
     m_lineEffect->SetProjection(proj);
 
     m_spriteBatch->SetViewport(viewport);
+
+    /////////////////////////////
+    auto size = m_deviceResources->GetOutputSize();
+
+    m_view = DirectX::SimpleMath::Matrix::Matrix::CreateLookAt(SimpleMath::Vector3(2.f, 2.f, 2.f),
+        SimpleMath::Vector3::Zero, SimpleMath::Vector3::UnitY);
+    m_proj = DirectX::SimpleMath::Matrix::CreatePerspectiveFieldOfView(XM_PI / 4.f,
+        float(size.right) / float(size.bottom), 0.1f, 10.f);
 }
 
 void Sample::OnDeviceLost()
@@ -1334,7 +1432,16 @@ void Sample::OnDeviceLost()
 
     m_dmlDescriptorHeap.reset();
 
-    m_graphicsMemory.reset();
+    m_graphicsMemory.reset(); 
+
+    ////////////////
+    m_effect.reset();
+    m_batch.reset();
+    m_states.reset();
+    m_fxFactory.reset();
+    m_modelResources.reset();
+    m_model.reset();
+    m_modelNormal.clear();
 }
 
 void Sample::OnDeviceRestored()
