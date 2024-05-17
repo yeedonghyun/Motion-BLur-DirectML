@@ -37,7 +37,7 @@ namespace
         XMFLOAT4 position;
         XMFLOAT2 texcoord;
     };
-
+    //수정확인용
     struct ImageLayoutCB
     {
         UINT Height;
