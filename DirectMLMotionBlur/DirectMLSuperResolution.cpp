@@ -108,7 +108,7 @@ Sample::Sample()
     , m_zoomX(0.5f)
     , m_zoomY(0.5f)
     , m_zoomUpdated(false)
-    , m_motionBlur(true)
+    , m_motionBlur(false)
 {
     // Use gamma-correct rendering.
     // Renders only 2D, so no need for a depth buffer.
@@ -750,7 +750,7 @@ void Sample::CreateDeviceDependentResources()
             e_fontDescCount);
     }
 
-    CreateMotionBlurResources();
+    //CreateMotionBlurResources();
     CreateTextureResources();
     CreateDirectMLResources();
     InitializeDirectMLResources();
