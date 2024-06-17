@@ -522,7 +522,6 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Assets\cup.sdkmesh" />
     <None Include="Assets\TensorToImage.hlsli" />
     <CopyFileToFolders Include="Assets\weights.bin">
       <FileType>Document</FileType>
