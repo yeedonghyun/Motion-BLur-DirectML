@@ -9,59 +9,83 @@ import model
 from matplotlib import pyplot as plt
 from IPython import display
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 BUFFER_SIZE = 400
 BATCH_SIZE = 1
 PATH = './datasets/'
+title = ['color 1layer image', 'depth 1layer image', 'motion vector 1layer image', 
+         'color 2layer image', 'depth 2layer image', 'motion vector 2layer image', 'motion blur image']
 
-color_files = tf.data.Dataset.list_files(str(PATH + 'color_1layer/*.png'), shuffle=False)
-depth_files = tf.data.Dataset.list_files(str(PATH + 'depth_1layer/*.png'), shuffle=False)
-motion_vector_files = tf.data.Dataset.list_files(str(PATH + 'motion_vector_1layer/*.png'), shuffle=False)
+#### Read datasets
+color_1layer_files = tf.data.Dataset.list_files(str(PATH + 'color_1layer/*.png'), shuffle=False)
+depth_1layer_files = tf.data.Dataset.list_files(str(PATH + 'depth_1layer/*.png'), shuffle=False)
+motion_vector_1layer_files = tf.data.Dataset.list_files(str(PATH + 'motion_vector_1layer/*.png'), shuffle=False)
+
+color_2layer_files = tf.data.Dataset.list_files(str(PATH + 'color_2layer/*.png'), shuffle=False)
+depth_2layer_files = tf.data.Dataset.list_files(str(PATH + 'depth_2layer/*.png'), shuffle=False)
+motion_vector_2layer_files = tf.data.Dataset.list_files(str(PATH + 'motion_vector_2layer/*.png'), shuffle=False)
+
 motion_blur_files = tf.data.Dataset.list_files(str(PATH + 'motion_blur/*.png'), shuffle=False)
-dataset = tf.data.Dataset.zip((color_files, depth_files, motion_vector_files, motion_blur_files))
-dataset = dataset.map(lambda color, depth, motion_vector, motion_blur: util.parse_function(color, depth, motion_vector, motion_blur),
-                      num_parallel_calls=tf.data.AUTOTUNE)
 
-train_dataset = dataset.shuffle(BUFFER_SIZE)
-train_dataset = train_dataset.batch(BATCH_SIZE)
-train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+discriminator_dataset =  tf.data.Dataset.zip((color_1layer_files, depth_1layer_files, motion_vector_1layer_files, 
+                                              color_2layer_files, depth_2layer_files, motion_vector_2layer_files, motion_blur_files))
+discriminator_dataset = discriminator_dataset.map(lambda color_1layer, depth_1layer, motion_vector_1layer, color_2layer, depth_2layer, motion_vector_2layer, motion_blur: 
+                                                  util.parse_function([color_1layer, depth_1layer, motion_vector_1layer, color_2layer, depth_2layer, motion_vector_2layer, motion_blur]), 
+                                                  num_parallel_calls=tf.data.AUTOTUNE)
+discriminator_dataset = discriminator_dataset.shuffle(BUFFER_SIZE)
+discriminator_dataset = discriminator_dataset.batch(BATCH_SIZE)
+discriminator_dataset = discriminator_dataset.prefetch(tf.data.AUTOTUNE)
 
-for batch in train_dataset.take(1):
-    util.display_images(batch, ['color image', 'depth image', 'motion vector image', 'motion blur image'])
+generator_dataset = tf.data.Dataset.zip((color_1layer_files, depth_1layer_files, motion_vector_1layer_files, 
+                                         color_2layer_files, depth_2layer_files, motion_vector_2layer_files))
+generator_dataset = generator_dataset.map(lambda color_1layer, depth_1layer, motion_vector_1layer, color_2layer, depth_2layer, motion_vector_2layer: 
+                                          util.parse_function([color_1layer, depth_1layer, motion_vector_1layer,color_2layer, depth_2layer, motion_vector_2layer]), 
+                                          num_parallel_calls=tf.data.AUTOTUNE)
+generator_dataset = generator_dataset.shuffle(BUFFER_SIZE)
+generator_dataset = generator_dataset.batch(BATCH_SIZE)
+generator_dataset = generator_dataset.prefetch(tf.data.AUTOTUNE)
 
-total_images = 0
-for batch in train_dataset:
-    total_images += batch.shape[0]
-print(f'Total images in dataset: {total_images}')
+#### Test datasets
+for batch in discriminator_dataset.take(1):
+  util.display_images(batch[0].numpy(), title)
 
-for batch in train_dataset.take(1):
-  down_model = model.downsample(3, 4)
+for batch in discriminator_dataset.take(1):
+  print (f'Discriminator input image shape: {batch.shape}')
+
+for batch in generator_dataset.take(1):
+  print (f'Generator input image shape: {batch.shape}')
+
+for batch in generator_dataset.take(1):
   image = tf.expand_dims(batch[0].numpy()[:, :, :], 0)
+  down_model = model.downsample(32, 4)
   down_result = down_model(image, 0)
   print (f'Image shape: {batch.shape} to down result shape: {down_result.shape}')
 
-for batch in train_dataset.take(1):
-  up_model = model.upsample(3, 4)
+for batch in generator_dataset.take(1):
+  up_model = model.upsample(18, 4)
   up_result = up_model(down_result)
   print (f'down result shape: {down_result.shape} to Up result shape: {up_result.shape}')
 
+#### Model init and generator test
 generator = model.Generator()
-for batch in train_dataset.take(1):
-  image = batch[0].numpy()[:, :, :]
-  gen_output = generator(image[tf.newaxis, ...], training=False)
-  plt.imshow(gen_output[0, ...])
-
 discriminator = model.Discriminator()
-for batch in train_dataset.take(1):
-  image = batch[0].numpy()[:, :, :]
-  disc_out = discriminator([image[tf.newaxis, ...], gen_output], training=False)
-  plt.imshow(disc_out[0, ..., -1], vmin=-20, vmax=20, cmap='RdBu_r')
-  plt.colorbar()
 
 generator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
 discriminator_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
 
+for batch in generator_dataset.take(1):
+  image = batch[0].numpy()[:, :, :]
+  gen_output = generator(image[tf.newaxis, ...], training=False)
+  plt.imshow(gen_output[0, ...])
+  plt.show()
+
+for batch in discriminator_dataset.take(1):
+  image = batch[0].numpy()[:, :, :]
+  disc_out = discriminator([image[tf.newaxis, ...], gen_output], training=False)
+  plt.imshow(disc_out[0, ..., -1], vmin=-20, vmax=20, cmap='RdBu_r')
+  plt.colorbar()
+  plt.show()
+
+#### Logging
 checkpoint_dir = './training_checkpoints'
 checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
 checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
@@ -69,12 +93,11 @@ checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                  generator=generator,
                                  discriminator=discriminator)
 
-
 log_dir="logs/"
-
 summary_writer = tf.summary.create_file_writer(
   log_dir + "fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
+#### Training
 @tf.function
 def train_step(input_image, target, step):
   with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
@@ -115,7 +138,7 @@ def fit(train_ds, test_ds, steps):
 
       start = time.time()
 
-      generate_images(generator, example_input, example_target, str(step))
+      model.generate_images(generator, example_input, example_target, title, str(step))
       print(f"Step: {step//1000}k")
 
     train_step(input_image, target, step)
